@@ -22,10 +22,10 @@ from pypdf import PdfReader
 
 def format_markdown(text: str) -> str:
     """
-    Realiza uma formatação básica:
-      - Remove espaços em branco desnecessários.
-      - Junta linhas quebradas com hífen (ex.: "palavra-\ncontinuada" => "palavracontinuada").
-      - Garante que haja duas quebras de linha entre parágrafos.
+    Aplica formatação básica:
+      - Remove quebras de linha desnecessárias.
+      - Corrige palavras quebradas com hífen.
+      - Garante espaçamento adequado entre parágrafos.
     """
     text = re.sub(r'-\n(\w)', r'\1', text)
     text = re.sub(r'\n\s*\n', '\n\n', text.strip())
@@ -56,14 +56,13 @@ converter = PDFToMarkdownConverter()
 
 router = APIRouter()
 
-# Modelos para o chat
 class ChatRequest(BaseModel):
-    message: str = Field(..., example="Olá, tudo bem?")
+    message: str = Field(..., example="Qual a informação sobre a camada de enlace?")
     session_id: Optional[str] = Field(None, example="123e4567-e89b-12d3-a456-426614174000")
 
 class ChatResponse(BaseModel):
     session_id: str = Field(..., example="123e4567-e89b-12d3-a456-426614174000")
-    response: str = Field(..., example="Tudo bem!")
+    response: str = Field(..., example="A camada de enlace é responsável por...")
 
 # Modelos para sessões e documentos
 class SessionModel(BaseModel):
@@ -144,27 +143,48 @@ async def list_sessions_endpoint(cursor: Optional[str] = Query(None, description
     sessions, next_cursor = list_sessions(cursor, limit)
     return SessionsResponse(sessions=sessions, next_cursor=next_cursor)
 
-# Endpoint: Chat com histórico
 @router.post("/chat", response_model=ChatResponse, tags=["Chat"],
-             summary="Enviar mensagem e receber resposta",
-             description="Envia uma mensagem e retorna a resposta da OpenAI, considerando o histórico. "
-                         "Cria nova sessão se 'session_id' não for informado.")
+             summary="Enviar mensagem com base nos documentos relevantes",
+             description="Envia uma mensagem e retorna a resposta da OpenAI utilizando apenas o conteúdo dos documentos relevantes. "
+                         "A resposta será em texto puro, sem formatação.")
 async def chat_endpoint(request: ChatRequest):
     session_id = request.session_id if request.session_id else str(uuid.uuid4())
     save_message(session_id, "user", request.message)
-    conversation_history = load_conversation(session_id)
     
-    docs_context = ""
+    relevant_docs = []
+    query_lower = request.message.lower()
     for filename in os.listdir(MD_FOLDER):
         if filename.endswith(".md"):
             path = os.path.join(MD_FOLDER, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().lower()
+                    if query_lower in content:
+                        relevant_docs.append(filename)
+            except Exception:
+                continue
+
+    context = ""
+    for filename in relevant_docs:
+        path = os.path.join(MD_FOLDER, filename)
+        try:
             with open(path, "r", encoding="utf-8") as f:
-                docs_context += f"Doc: {filename}\n{f.read()}\n\n"
+                content = f.read().strip()
+                snippet = content[:500] + "..." if len(content) > 500 else content
+                context += f"{snippet}\n\n"
+        except Exception:
+            continue
+
+    system_prompt = (
+        "Você é um assistente especializado na análise de documentos. "
+        "Utilize exclusivamente o conteúdo dos trechos fornecidos abaixo para responder à pergunta. "
+        "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar os nomes dos documentos.\n\n"
+        "Contexto:\n"
+        f"{context}\n"
+        f"Pergunta: {request.message}"
+    )
     
-    messages = []
-    if docs_context:
-        messages.append({"role": "system", "content": f"Use os documentos abaixo como contexto:\n\n{docs_context}"})
-    messages.extend(conversation_history)
+    messages = [{"role": "system", "content": system_prompt}]
     
     try:
         response = openai.ChatCompletion.create(
