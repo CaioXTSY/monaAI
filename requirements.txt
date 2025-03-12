@@ -1,0 +1,9 @@
+fastapi==0.115.11
+uvicorn==0.22.0
+openai==0.27.8
+python-dotenv==1.0.0
+docling==2.25.2
+docling-core==2.21.2
+docling-ibm-models==3.4.1
+docling-parse==3.4.0
+pydantic==2.10.6
