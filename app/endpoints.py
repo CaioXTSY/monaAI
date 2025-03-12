@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
@@ -16,21 +17,42 @@ openai.api_key = OPENAI_API_KEY
 os.makedirs(PDF_FOLDER, exist_ok=True)
 os.makedirs(MD_FOLDER, exist_ok=True)
 
-# Tenta importar o DocumentConverter; caso não consiga, define um fallback.
-try:
-    from docling.document_converter import DocumentConverter
-except ImportError:
-    class DummyDocument:
-        def export_to_markdown(self):
-            return "PDF convertido para Markdown (simulado)."
-    class DummyConversionResult:
-        def __init__(self):
-            self.document = DummyDocument()
-    class DocumentConverter:
-        def convert(self, pdf_path):
-            return DummyConversionResult()
+# Implementação de um conversor de PDF para Markdown usando pypdf
+from pypdf import PdfReader
 
-converter = DocumentConverter()
+def format_markdown(text: str) -> str:
+    """
+    Realiza uma formatação básica:
+      - Remove espaços em branco desnecessários.
+      - Junta linhas quebradas com hífen (ex.: "palavra-\ncontinuada" => "palavracontinuada").
+      - Garante que haja duas quebras de linha entre parágrafos.
+    """
+    text = re.sub(r'-\n(\w)', r'\1', text)
+    text = re.sub(r'\n\s*\n', '\n\n', text.strip())
+    return text
+
+class SimpleDocument:
+    def __init__(self, text: str):
+        self.text = text
+
+    def export_to_markdown(self) -> str:
+        return format_markdown(self.text)
+
+class SimpleConversionResult:
+    def __init__(self, text: str):
+        self.document = SimpleDocument(text)
+
+class PDFToMarkdownConverter:
+    def convert(self, pdf_path: str) -> SimpleConversionResult:
+        reader = PdfReader(pdf_path)
+        md_text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                md_text += page_text + "\n\n"
+        return SimpleConversionResult(md_text)
+
+converter = PDFToMarkdownConverter()
 
 router = APIRouter()
 
