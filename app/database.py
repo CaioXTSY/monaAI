@@ -1,6 +1,6 @@
 import sqlite3
 from typing import List, Tuple, Optional
-from config import DB_FILE
+from .config import DB_FILE
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)

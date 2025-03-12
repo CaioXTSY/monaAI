@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
 import openai
 
-from config import OPENAI_API_KEY, PDF_FOLDER, MD_FOLDER
-from database import save_message, load_conversation, list_sessions, remove_session_history
+from .config import OPENAI_API_KEY, PDF_FOLDER, MD_FOLDER
+from .database import save_message, load_conversation, list_sessions, remove_session_history
 
 openai.api_key = OPENAI_API_KEY
 
@@ -77,7 +77,6 @@ class DocsResponse(BaseModel):
     documents: List[str]
     next_cursor: Optional[str] = Field(None, description="Próximo cursor, se houver.")
 
-# Endpoint: Upload de PDF e conversão para Markdown
 @router.post("/add_pdf", tags=["Documentos"], summary="Upload de PDF e conversão",
              description="Recebe um PDF, converte para Markdown e salva o arquivo. O PDF é removido após conversão.")
 async def add_pdf(file: UploadFile = File(...)):
@@ -101,7 +100,6 @@ async def add_pdf(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro na conversão: {str(e)}")
 
-# Endpoint: Listar documentos Markdown (paginação por cursor)
 @router.get("/list_docs", response_model=DocsResponse, tags=["Documentos"],
             summary="Listar documentos",
             description="Retorna os arquivos Markdown com paginação via cursor (baseado no nome do arquivo).")
@@ -120,19 +118,6 @@ async def list_docs_endpoint(cursor: Optional[str] = Query(None, description="Ú
     next_cursor = paginated[-1] if len(paginated) == limit and (start_index + limit) < len(files) else None
     return DocsResponse(documents=paginated, next_cursor=next_cursor)
 
-
-# Endpoint: Remover sessão de conversa
-@router.delete("/remove_session/{session_id}", tags=["Histórico"],
-               summary="Remover sessão",
-               description="Remove todo o histórico de conversas associado ao session_id fornecido.")
-async def remove_session(session_id: str):
-    try:
-        remove_session_history(session_id)
-        return {"message": f"Sessão {session_id} removida."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao remover sessão: {str(e)}")
-
-# Endpoint: Remover documento Markdown
 @router.delete("/remove_doc/{filename}", tags=["Documentos"],
                summary="Remover documento",
                description="Remove o arquivo Markdown especificado.")
@@ -146,7 +131,6 @@ async def remove_doc(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao remover: {str(e)}")
 
-# Endpoint: Listar sessões de conversa (paginação por cursor)
 @router.get("/sessions", response_model=SessionsResponse, tags=["Histórico"],
             summary="Listar sessões",
             description="Retorna as sessões do chat com paginação via cursor (última atualização).")
@@ -154,6 +138,16 @@ async def list_sessions_endpoint(cursor: Optional[str] = Query(None, description
                                  limit: int = Query(10, description="Sessões por página")):
     sessions, next_cursor = list_sessions(cursor, limit)
     return SessionsResponse(sessions=sessions, next_cursor=next_cursor)
+
+@router.delete("/remove_session/{session_id}", tags=["Histórico"],
+               summary="Remover sessão",
+               description="Remove todo o histórico de conversas associado ao session_id fornecido.")
+async def remove_session(session_id: str):
+    try:
+        remove_session_history(session_id)
+        return {"message": f"Sessão {session_id} removida."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao remover sessão: {str(e)}")
 
 @router.post("/chat", response_model=ChatResponse, tags=["Chat"],
              summary="Enviar mensagem com base no conteúdo dos documentos",
@@ -176,8 +170,7 @@ async def chat_endpoint(request: ChatRequest):
 
     system_prompt = (
         "Você é um assistente especializado na análise de documentos. "
-        "Abaixo segue o conteúdo combinado de todos os documentos Markdown disponíveis. "
-        "Utilize exclusivamente esse conteúdo para responder à pergunta. "
+        "Utilize exclusivamente o conteúdo abaixo para responder à pergunta. "
         "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar nenhum nome de documento.\n\n"
         "Conteúdo dos Documentos:\n"
         f"{combined_context}\n"
@@ -191,7 +184,7 @@ async def chat_endpoint(request: ChatRequest):
             model="gpt-4o-mini",
             messages=messages,
             temperature=0.7,
-            max_tokens=150
+            max_tokens=15000
         )
         bot_response = response.choices[0].message.content.strip()
         save_message(session_id, "assistant", bot_response)

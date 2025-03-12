@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from config import PORT
-from database import init_db
-from endpoints import router as api_router
+from .config import PORT
+from .database import init_db
+from .endpoints import router as api_router
 
 init_db()
 
