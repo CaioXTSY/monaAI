@@ -63,3 +63,10 @@ def list_sessions(cursor_value: Optional[str], limit: int) -> Tuple[List[dict], 
     sessions = [{"session_id": row["session_id"], "last_updated": row["last_updated"]} for row in rows]
     next_cursor = sessions[-1]["last_updated"] if len(sessions) == limit else None
     return sessions, next_cursor
+
+def remove_session_history(session_id: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM conversation_history WHERE session_id = ?", (session_id,))
+    conn.commit()
+    conn.close()

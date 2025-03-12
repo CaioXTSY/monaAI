@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 import openai
 
 from config import OPENAI_API_KEY, PDF_FOLDER, MD_FOLDER
-from database import save_message, load_conversation, list_sessions
+from database import save_message, load_conversation, list_sessions, remove_session_history
 
 openai.api_key = OPENAI_API_KEY
 
@@ -119,6 +119,18 @@ async def list_docs_endpoint(cursor: Optional[str] = Query(None, description="Ú
     paginated = files[start_index:start_index + limit]
     next_cursor = paginated[-1] if len(paginated) == limit and (start_index + limit) < len(files) else None
     return DocsResponse(documents=paginated, next_cursor=next_cursor)
+
+
+# Endpoint: Remover sessão de conversa
+@router.delete("/remove_session/{session_id}", tags=["Histórico"],
+               summary="Remover sessão",
+               description="Remove todo o histórico de conversas associado ao session_id fornecido.")
+async def remove_session(session_id: str):
+    try:
+        remove_session_history(session_id)
+        return {"message": f"Sessão {session_id} removida."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao remover sessão: {str(e)}")
 
 # Endpoint: Remover documento Markdown
 @router.delete("/remove_doc/{filename}", tags=["Documentos"],
