@@ -24,7 +24,7 @@ def format_markdown(text: str) -> str:
     """
     Aplica formatação básica:
       - Remove quebras de linha desnecessárias.
-      - Corrige palavras quebradas com hífen.
+      - Corrige palavras quebradas com hífen (ex.: "palavra-\ncontinuada" => "palavracontinuada").
       - Garante espaçamento adequado entre parágrafos.
     """
     text = re.sub(r'-\n(\w)', r'\1', text)
@@ -144,43 +144,31 @@ async def list_sessions_endpoint(cursor: Optional[str] = Query(None, description
     return SessionsResponse(sessions=sessions, next_cursor=next_cursor)
 
 @router.post("/chat", response_model=ChatResponse, tags=["Chat"],
-             summary="Enviar mensagem com base nos documentos relevantes",
-             description="Envia uma mensagem e retorna a resposta da OpenAI utilizando apenas o conteúdo dos documentos relevantes. "
+             summary="Enviar mensagem com base no conteúdo dos documentos",
+             description="Envia uma mensagem e retorna a resposta da OpenAI utilizando o conteúdo combinado de todos os documentos Markdown existentes. "
                          "A resposta será em texto puro, sem formatação.")
 async def chat_endpoint(request: ChatRequest):
     session_id = request.session_id if request.session_id else str(uuid.uuid4())
     save_message(session_id, "user", request.message)
     
-    relevant_docs = []
-    query_lower = request.message.lower()
+    # Lê e junta todos os documentos Markdown em um único contexto
+    combined_context = ""
     for filename in os.listdir(MD_FOLDER):
         if filename.endswith(".md"):
             path = os.path.join(MD_FOLDER, filename)
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().lower()
-                    if query_lower in content:
-                        relevant_docs.append(filename)
+                    combined_context += f.read() + "\n\n"
             except Exception:
                 continue
 
-    context = ""
-    for filename in relevant_docs:
-        path = os.path.join(MD_FOLDER, filename)
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                snippet = content[:500] + "..." if len(content) > 500 else content
-                context += f"{snippet}\n\n"
-        except Exception:
-            continue
-
     system_prompt = (
         "Você é um assistente especializado na análise de documentos. "
-        "Utilize exclusivamente o conteúdo dos trechos fornecidos abaixo para responder à pergunta. "
-        "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar os nomes dos documentos.\n\n"
-        "Contexto:\n"
-        f"{context}\n"
+        "Abaixo segue o conteúdo combinado de todos os documentos Markdown disponíveis. "
+        "Utilize exclusivamente esse conteúdo para responder à pergunta. "
+        "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar nenhum nome de documento.\n\n"
+        "Conteúdo dos Documentos:\n"
+        f"{combined_context}\n"
         f"Pergunta: {request.message}"
     )
     
