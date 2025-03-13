@@ -153,6 +153,10 @@ async def remove_session(session_id: str):
              summary="Enviar mensagem com base no conteúdo dos documentos",
              description="Envia uma mensagem e retorna a resposta da OpenAI utilizando o conteúdo combinado de todos os documentos Markdown existentes. "
                          "A resposta será em texto puro, sem formatação.")
+@router.post("/chat", response_model=ChatResponse, tags=["Chat"],
+             summary="Enviar mensagem com base no conteúdo dos documentos",
+             description="Envia uma mensagem e retorna a resposta da OpenAI utilizando o conteúdo combinado de todos os documentos Markdown existentes. "
+                         "A resposta será em texto puro, sem formatação, e os nomes dos documentos não devem ser mencionados na resposta final.")
 async def chat_endpoint(request: ChatRequest):
     session_id = request.session_id if request.session_id else str(uuid.uuid4())
     save_message(session_id, "user", request.message)
@@ -164,14 +168,16 @@ async def chat_endpoint(request: ChatRequest):
             path = os.path.join(MD_FOLDER, filename)
             try:
                 with open(path, "r", encoding="utf-8") as f:
-                    combined_context += f.read() + "\n\n"
+                    content = f.read().strip()
+                    combined_context += f"=== Documento: {filename} ===\n{content}\n\n"
             except Exception:
                 continue
 
     system_prompt = (
         "Você é um assistente especializado na análise de documentos. "
-        "Utilize exclusivamente o conteúdo abaixo para responder à pergunta. "
-        "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar nenhum nome de documento.\n\n"
+        "Abaixo segue o conteúdo combinado de todos os documentos Markdown disponíveis, devidamente delimitado. "
+        "Utilize exclusivamente esse conteúdo para responder à pergunta. "
+        "Sua resposta deve ser em texto puro, sem formatação adicional, e não deve mencionar os nomes dos documentos.\n\n"
         "Conteúdo dos Documentos:\n"
         f"{combined_context}\n"
         f"Pergunta: {request.message}"
