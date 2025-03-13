@@ -149,10 +149,19 @@ async def remove_session(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao remover sessão: {str(e)}")
 
-@router.post("/chat", response_model=ChatResponse, tags=["Chat"],
-             summary="Enviar mensagem com base no conteúdo dos documentos",
-             description="Envia uma mensagem e retorna a resposta da OpenAI utilizando o conteúdo combinado de todos os documentos Markdown existentes. "
-                         "A resposta será em texto puro, sem formatação.")
+class MessageModel(BaseModel):
+    role: str = Field(..., example="user")
+    content: str = Field(..., example="Olá, tudo bem?")
+
+@router.get("/session/{session_id}", response_model=List[MessageModel], tags=["Histórico"],
+            summary="Obter histórico de sessão",
+            description="Retorna o histórico de mensagens da sessão especificada.")
+async def get_session_history(session_id: str):
+    history = load_conversation(session_id)
+    if not history:
+        raise HTTPException(status_code=404, detail="Histórico não encontrado para a sessão fornecida.")
+    return history
+
 @router.post("/chat", response_model=ChatResponse, tags=["Chat"],
              summary="Enviar mensagem com base no conteúdo dos documentos",
              description="Envia uma mensagem e retorna a resposta da OpenAI utilizando o conteúdo combinado de todos os documentos Markdown existentes. "
